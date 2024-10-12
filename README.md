@@ -196,3 +196,6 @@ KEDA Autoscaling:
 
 As more messages are produced in Kafka, KEDA will detect the increasing load and scale the deployed pods to process the messages.
 The pods will automatically scale up to handle the Kafka messages and scale down once the messages are processed.
+
+
+The Alert mechanism is also inbuilt in the code, if the pod enters crashbackloopoff or in any state other than running or pending, it will alert in the frontend.
