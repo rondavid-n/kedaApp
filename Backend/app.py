@@ -1,495 +1,3 @@
-# import os
-# import yaml
-# from fastapi import FastAPI
-# from fastapi.middleware.cors import CORSMiddleware
-# from pydantic import BaseModel
-# import sqlite3
-# import boto3
-# from kubernetes import client, config
-
-# app = FastAPI()
-
-# # Enable CORS to allow requests from different origins (like localhost:8080 for frontend)
-# app.add_middleware(
-#     CORSMiddleware,
-#     allow_origins=["*"],  # Allow all origins (for development)
-#     allow_credentials=True,
-#     allow_methods=["*"],  # Allow all methods
-#     allow_headers=["*"],  # Allow all headers
-# )
-
-# # Ensure the database and table are created when the application starts
-# def init_db():
-#     conn = sqlite3.connect('clusters.db')
-#     cursor = conn.cursor()
-#     cursor.execute("""
-#         CREATE TABLE IF NOT EXISTS clusters (
-#             id INTEGER PRIMARY KEY AUTOINCREMENT,
-#             access_key TEXT NOT NULL,
-#             secret_key TEXT NOT NULL,
-#             cluster_name TEXT NOT NULL UNIQUE,
-#             region TEXT NOT NULL
-#         )
-#     """)
-#     conn.commit()
-#     conn.close()
-
-# # Call the init_db function to create the table if it doesn't exist
-# init_db()
-
-# # SQLite database connection function
-# def get_db_connection():
-#     conn = sqlite3.connect('clusters.db')
-#     conn.row_factory = sqlite3.Row
-#     return conn
-
-# # AWS Credentials model for accepting input data
-# class ClusterData(BaseModel):
-#     access_key: str
-#     secret_key: str
-#     cluster_name: str
-#     region: str
-
-# def create_eks_kubeconfig(cluster_name: str, region: str, access_key: str, secret_key: str) -> str:
-#     """Generate a kubeconfig file for the given AWS EKS cluster and save it locally."""
-    
-#     session = boto3.Session(
-#         aws_access_key_id=access_key,
-#         aws_secret_access_key=secret_key,
-#         region_name=region
-#     )
-    
-#     eks_client = session.client('eks')
-    
-#     # Retrieve the cluster information
-#     cluster_info = eks_client.describe_cluster(name=cluster_name)['cluster']
-    
-#     # Prepare API server and certificate
-#     api_server = cluster_info['endpoint']
-#     certificate = cluster_info['certificateAuthority']['data']
-    
-#     # Generate kubeconfig content
-#     kubeconfig = {
-#         "apiVersion": "v1",
-#         "kind": "Config",
-#         "clusters": [
-#             {
-#                 "name": "kubernetes",
-#                 "cluster": {
-#                     "certificate-authority-data": certificate,
-#                     "server": api_server
-#                 }
-#             }
-#         ],
-#         "users": [
-#             {
-#                 "name": "aws",
-#                 "user": {
-#                     "exec": {
-#                         "apiVersion": "client.authentication.k8s.io/v1beta1",
-#                         "command": "aws",
-#                         "args": [
-#                             "eks",
-#                             "get-token",
-#                             "--cluster-name",
-#                             cluster_name,
-#                             "--region",
-#                             region
-#                         ]
-#                     }
-#                 }
-#             }
-#         ],
-#         "contexts": [
-#             {
-#                 "name": "aws",
-#                 "context": {
-#                     "cluster": "kubernetes",
-#                     "user": "aws"
-#                 }
-#             }
-#         ],
-#         "current-context": "aws"
-#     }
-
-#     # Define the path to save the kubeconfig file
-#     kubeconfig_file = f"./{cluster_name}-kubeconfig.yaml"
-
-#     # Save the kubeconfig file locally
-#     with open(kubeconfig_file, "w") as f:
-#         yaml.dump(kubeconfig, f)
-    
-#     print(f"Kubeconfig for cluster {cluster_name} saved as {kubeconfig_file}")
-#     return kubeconfig_file
-
-# # API to register a cluster
-# @app.post('/register-cluster')
-# async def register_cluster(data: ClusterData):
-#     conn = get_db_connection()
-#     cursor = conn.cursor()
-    
-#     # Store credentials and cluster info in the database
-#     try:
-#         cursor.execute(
-#             "INSERT INTO clusters (access_key, secret_key, cluster_name, region) VALUES (?, ?, ?, ?)", 
-#             (data.access_key, data.secret_key, data.cluster_name, data.region)
-#         )
-#         conn.commit()
-#     except sqlite3.IntegrityError:
-#         return {"error": "Cluster already registered"}
-#     finally:
-#         conn.close()
-
-#     return {"message": "Cluster registered successfully"}
-
-# # API to fetch registered clusters
-# @app.get('/clusters')
-# async def get_clusters():
-#     conn = get_db_connection()
-#     cursor = conn.cursor()
-    
-#     # Fetch cluster names from the database
-#     clusters = cursor.execute("SELECT cluster_name FROM clusters").fetchall()
-#     conn.close()
-    
-#     return [row['cluster_name'] for row in clusters]
-
-# # API to get namespaces in a cluster using kubeconfig from file
-# @app.get('/namespaces')
-# async def get_namespaces(cluster: str):
-#     conn = get_db_connection()
-#     cursor = conn.cursor()
-
-#     # Fetch the cluster credentials and region from the database
-#     cluster_data = cursor.execute(
-#         "SELECT * FROM clusters WHERE cluster_name = ?", (cluster,)
-#     ).fetchone()
-#     conn.close()
-
-#     if not cluster_data:
-#         return {"error": "Cluster not found"}
-
-#     # Create kubeconfig and save it to file
-#     kubeconfig_file = create_eks_kubeconfig(cluster_data['cluster_name'], cluster_data['region'], cluster_data['access_key'], cluster_data['secret_key'])
-
-#     # Load the kubeconfig from file
-#     config.load_kube_config(config_file=kubeconfig_file)
-
-#     # Use Kubernetes client to list namespaces
-#     v1 = client.CoreV1Api()
-#     namespaces = v1.list_namespace().items
-
-#     namespace_list = [ns.metadata.name for ns in namespaces]
-#     return {"namespaces": namespace_list}
-
-# # API to get pods in a cluster
-# @app.get('/pods')
-# async def get_pods(cluster: str, namespace: str = "all"):
-#     conn = get_db_connection()
-#     cursor = conn.cursor()
-
-#     # Fetch the cluster credentials and region from the database
-#     cluster_data = cursor.execute(
-#         "SELECT * FROM clusters WHERE cluster_name = ?", (cluster,)
-#     ).fetchone()
-#     conn.close()
-
-#     if not cluster_data:
-#         return {"error": "Cluster not found"}
-
-#     # Create kubeconfig and save it to file
-#     kubeconfig_file = create_eks_kubeconfig(cluster_data['cluster_name'], cluster_data['region'], cluster_data['access_key'], cluster_data['secret_key'])
-
-#     # Load the kubeconfig from file
-#     config.load_kube_config(config_file=kubeconfig_file)
-
-#     # Use Kubernetes client to access the cluster
-#     v1 = client.CoreV1Api()
-
-#     # Fetch pods from the specified namespace or from all namespaces
-#     if namespace == "all":
-#         pods = v1.list_pod_for_all_namespaces(watch=False)
-#     else:
-#         pods = v1.list_namespaced_pod(namespace=namespace, watch=False)
-
-#     # Gather pod details including CPU and memory usage
-#     pod_list = []
-#     for pod in pods.items:
-#         container = pod.spec.containers[0]
-#         resources = container.resources
-
-#         # Check if resource requests exist, otherwise set to 'Unknown'
-#         cpu = resources.requests.get('cpu', 'Unknown') if resources and resources.requests else 'Unknown'
-#         memory = resources.requests.get('memory', 'Unknown') if resources and resources.requests else 'Unknown'
-
-#         pod_list.append({
-#             "name": pod.metadata.name,
-#             "cpu": cpu,
-#             "memory": memory
-#         })
-
-#     return pod_list
-
-# if __name__ == "__main__":
-#     import uvicorn
-#     uvicorn.run(app, host="0.0.0.0", port=8000)
-
-
-
-# import os
-# import yaml
-# from fastapi import FastAPI, HTTPException, Query
-# from fastapi.middleware.cors import CORSMiddleware
-# from pydantic import BaseModel
-# import sqlite3
-# import boto3
-# from kubernetes import client, config
-# import subprocess
-
-# app = FastAPI()
-
-# # Enable CORS
-# app.add_middleware(
-#     CORSMiddleware,
-#     allow_origins=["*"],  # Allow all origins
-#     allow_credentials=True,
-#     allow_methods=["*"],  # Allow all methods
-#     allow_headers=["*"],  # Allow all headers
-# )
-
-# # Ensure the database and table are created when the application starts
-# def init_db():
-#     conn = sqlite3.connect('clusters.db')
-#     cursor = conn.cursor()
-#     cursor.execute("""
-#         CREATE TABLE IF NOT EXISTS clusters (
-#             id INTEGER PRIMARY KEY AUTOINCREMENT,
-#             access_key TEXT NOT NULL,
-#             secret_key TEXT NOT NULL,
-#             cluster_name TEXT NOT NULL UNIQUE,
-#             region TEXT NOT NULL
-#         )
-#     """)
-#     conn.commit()
-#     conn.close()
-
-# # Call the init_db function to create the table if it doesn't exist
-# init_db()
-
-# # SQLite database connection function
-# def get_db_connection():
-#     conn = sqlite3.connect('clusters.db')
-#     conn.row_factory = sqlite3.Row
-#     return conn
-
-# # Model to capture cluster registration details
-# class ClusterData(BaseModel):
-#     access_key: str
-#     secret_key: str
-#     cluster_name: str
-#     region: str
-
-# # Generate kubeconfig for EKS
-# def create_eks_kubeconfig(cluster_name: str, region: str, access_key: str, secret_key: str) -> str:
-#     """Generate a kubeconfig file for the given AWS EKS cluster and save it locally."""
-    
-#     session = boto3.Session(
-#         aws_access_key_id=access_key,
-#         aws_secret_access_key=secret_key,
-#         region_name=region
-#     )
-    
-#     eks_client = session.client('eks')
-#     cluster_info = eks_client.describe_cluster(name=cluster_name)['cluster']
-#     api_server = cluster_info['endpoint']
-#     certificate = cluster_info['certificateAuthority']['data']
-    
-#     kubeconfig = {
-#         "apiVersion": "v1",
-#         "kind": "Config",
-#         "clusters": [
-#             {
-#                 "name": "kubernetes",
-#                 "cluster": {
-#                     "certificate-authority-data": certificate,
-#                     "server": api_server
-#                 }
-#             }
-#         ],
-#         "users": [
-#             {
-#                 "name": "aws",
-#                 "user": {
-#                     "exec": {
-#                         "apiVersion": "client.authentication.k8s.io/v1beta1",
-#                         "command": "aws",
-#                         "args": [
-#                             "eks",
-#                             "get-token",
-#                             "--cluster-name",
-#                             cluster_name,
-#                             "--region",
-#                             region
-#                         ]
-#                     }
-#                 }
-#             }
-#         ],
-#         "contexts": [
-#             {
-#                 "name": "aws",
-#                 "context": {
-#                     "cluster": "kubernetes",
-#                     "user": "aws"
-#                 }
-#             }
-#         ],
-#         "current-context": "aws"
-#     }
-
-#     kubeconfig_file = f"./{cluster_name}-kubeconfig.yaml"
-#     with open(kubeconfig_file, "w") as f:
-#         yaml.dump(kubeconfig, f)
-    
-#     return kubeconfig_file
-
-# # API to register a cluster
-# @app.post('/register-cluster')
-# async def register_cluster(data: ClusterData):
-#     conn = get_db_connection()
-#     cursor = conn.cursor()
-    
-#     try:
-#         cursor.execute(
-#             "INSERT INTO clusters (access_key, secret_key, cluster_name, region) VALUES (?, ?, ?, ?)", 
-#             (data.access_key, data.secret_key, data.cluster_name, data.region)
-#         )
-#         conn.commit()
-#     except sqlite3.IntegrityError:
-#         return {"error": "Cluster already registered"}
-#     finally:
-#         conn.close()
-
-#     return {"message": "Cluster registered successfully"}
-
-# # API to fetch registered clusters
-# @app.get('/clusters')
-# async def get_clusters():
-#     conn = get_db_connection()
-#     cursor = conn.cursor()
-    
-#     clusters = cursor.execute("SELECT cluster_name FROM clusters").fetchall()
-#     conn.close()
-    
-#     return [row['cluster_name'] for row in clusters]
-
-# # API to fetch namespaces for a specific cluster
-# @app.get('/namespaces')
-# async def get_namespaces(cluster: str = Query(...)):
-#     # Fetch the cluster details from the database
-#     conn = get_db_connection()
-#     cursor = conn.cursor()
-#     cluster_data = cursor.execute("SELECT * FROM clusters WHERE cluster_name = ?", (cluster,)).fetchone()
-#     conn.close()
-
-#     if not cluster_data:
-#         raise HTTPException(status_code=404, detail="Cluster not found")
-
-#     # Create kubeconfig for the cluster
-#     kubeconfig_file = create_eks_kubeconfig(cluster_data['cluster_name'], cluster_data['region'], cluster_data['access_key'], cluster_data['secret_key'])
-#     os.environ["KUBECONFIG"] = kubeconfig_file
-
-#     try:
-#         # Load Kubernetes configuration from the generated kubeconfig file
-#         config.load_kube_config(config_file=kubeconfig_file)
-#         v1 = client.CoreV1Api()
-
-#         # List namespaces in the cluster
-#         namespaces = v1.list_namespace().items
-#         namespace_names = [namespace.metadata.name for namespace in namespaces]
-
-#         return {"namespaces": namespace_names}
-#     except Exception as e:
-#         raise HTTPException(status_code=500, detail=f"Failed to retrieve namespaces: {str(e)}")
-
-# @app.get('/pods')
-# async def get_pods(cluster: str, namespace: str = 'default'):
-#     # Fetch the cluster details from the database
-#     conn = get_db_connection()
-#     cursor = conn.cursor()
-#     cluster_data = cursor.execute("SELECT * FROM clusters WHERE cluster_name = ?", (cluster,)).fetchone()
-#     conn.close()
-
-#     if not cluster_data:
-#         raise HTTPException(status_code=404, detail="Cluster not found")
-
-#     # Create kubeconfig for the cluster
-#     kubeconfig_file = create_eks_kubeconfig(cluster_data['cluster_name'], cluster_data['region'], cluster_data['access_key'], cluster_data['secret_key'])
-#     os.environ["KUBECONFIG"] = kubeconfig_file
-
-#     try:
-#         # Load Kubernetes configuration from the generated kubeconfig file
-#         config.load_kube_config(config_file=kubeconfig_file)
-#         v1 = client.CoreV1Api()
-
-#         # Check if namespace is 'all', list all pods in all namespaces
-#         if namespace == 'all':
-#             pods = v1.list_pod_for_all_namespaces().items
-#         else:
-#             pods = v1.list_namespaced_pod(namespace).items
-
-#         # Parse the pod data
-#         pod_list = []
-#         for pod in pods:
-#             pod_info = {
-#                 "name": pod.metadata.name,
-#                 "status": pod.status.phase,
-#                 "cpu": pod.spec.containers[0].resources.requests.get('cpu') if pod.spec.containers[0].resources.requests else "N/A",
-#                 "memory": pod.spec.containers[0].resources.requests.get('memory') if pod.spec.containers[0].resources.requests else "N/A",
-#             }
-#             pod_list.append(pod_info)
-
-#         # Return pods in the specified namespace
-#         return {"pods": pod_list}
-#     except client.exceptions.ApiException as e:
-#         # Catch API exceptions from Kubernetes client and return as HTTP error
-#         raise HTTPException(status_code=500, detail=f"Failed to retrieve pods: {e.reason}")
-#     except Exception as e:
-#         raise HTTPException(status_code=500, detail=f"Failed to retrieve pods: {str(e)}")
-
-    
-# # API to install KEDA via Helm
-# @app.post('/install-keda/{cluster}')
-# async def install_keda(cluster: str):
-#     conn = get_db_connection()
-#     cursor = conn.cursor()
-#     cluster_data = cursor.execute("SELECT * FROM clusters WHERE cluster_name = ?", (cluster,)).fetchone()
-#     conn.close()
-
-#     if not cluster_data:
-#         raise HTTPException(status_code=404, detail="Cluster not found")
-
-#     kubeconfig_file = create_eks_kubeconfig(cluster_data['cluster_name'], cluster_data['region'], cluster_data['access_key'], cluster_data['secret_key'])
-#     os.environ["KUBECONFIG"] = kubeconfig_file
-
-#     keda_installed = subprocess.run(["helm", "list", "-n", "keda"], capture_output=True, text=True)
-#     if "keda" in keda_installed.stdout:
-#         return {"message": "KEDA is already installed"}
-
-#     install_command = ["helm", "install", "keda", "kedacore/keda", "--namespace", "keda", "--create-namespace"]
-#     result = subprocess.run(install_command, capture_output=True, text=True)
-
-#     if result.returncode == 0:
-#         return {"message": "KEDA installed successfully"}
-#     else:
-#         return {"error": "Failed to install KEDA", "details": result.stderr}
-
-
-# # Run the FastAPI application using uvicorn
-# if __name__ == "__main__":
-#     import uvicorn
-#     uvicorn.run(app, host="0.0.0.0", port=8000)
-
 import os
 import yaml
 import logging
@@ -508,11 +16,9 @@ from kubernetes.client import CustomObjectsApi
 
 app = FastAPI()
 
-# Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Enable CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -521,7 +27,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Ensure the database and table are created when the application starts
 def init_db():
     conn = sqlite3.connect('clusters.db')
     cursor = conn.cursor()
@@ -557,13 +62,12 @@ def init_db():
 def on_startup():
     init_db()
 
-# SQLite database connection function
+
 def get_db_connection():
     conn = sqlite3.connect('clusters.db')
     conn.row_factory = sqlite3.Row
     return conn
 
-# Model to capture cluster registration details
 class ClusterData(BaseModel):
     access_key: str
     secret_key: str
@@ -575,12 +79,10 @@ class KafkaMessageRequest(BaseModel):
     message: str
     message_count: int
 
-# Model to capture Kafka topic and consumer group details
 class KafkaTopicRequest(BaseModel):
     topic_name: str
     consumer_group_name: str
 
-# Model to capture deployment details
 class DeploymentData(BaseModel):
     deployment_name: str
     docker_image: str
@@ -595,7 +97,6 @@ class DeploymentData(BaseModel):
     consumer_group_name: str
 
 
-# Generate kubeconfig for EKS
 def create_eks_kubeconfig(cluster_name: str, region: str, access_key: str, secret_key: str) -> str:
     try:
         session = boto3.Session(
@@ -743,19 +244,18 @@ async def get_pods(cluster: str, namespace: str = 'default'):
         pod_list = []
         for pod in pods:
             container_statuses = pod.status.container_statuses or []
-            pod_status = pod.status.phase  # Get the general pod status
+            pod_status = pod.status.phase  
             if container_statuses:
                 for container_status in container_statuses:
                     if container_status.state.waiting and container_status.state.waiting.reason:
-                        pod_status = container_status.state.waiting.reason  # e.g., CrashLoopBackOff, ErrImagePull
+                        pod_status = container_status.state.waiting.reason  
                     elif container_status.state.terminated and container_status.state.terminated.reason:
-                        pod_status = container_status.state.terminated.reason  # e.g., Error, Terminated
+                        pod_status = container_status.state.terminated.reason 
                     elif container_status.state.running:
-                        pod_status = "Running"  # Pod is running
+                        pod_status = "Running" 
                     else:
-                        pod_status = pod.status.phase  # Pending, Succeeded, etc.
+                        pod_status = pod.status.phase  
 
-            # Safely retrieve CPU and memory requests, handling cases where they're undefined
             cpu_request = 'N/A'
             memory_request = 'N/A'
             if pod.spec.containers and pod.spec.containers[0].resources and pod.spec.containers[0].resources.requests:
@@ -790,25 +290,22 @@ async def install_kafka(cluster: str):
     if not cluster_data:
         raise HTTPException(status_code=404, detail="Cluster not found")
 
-    # Generate kubeconfig for the cluster
     kubeconfig_file = create_eks_kubeconfig(cluster_data['cluster_name'], cluster_data['region'], cluster_data['access_key'], cluster_data['secret_key'])
     os.environ["KUBECONFIG"] = kubeconfig_file
 
-    # Check if Zookeeper is already installed
+
     zookeeper_installed = subprocess.run(["kubectl", "get", "statefulset", "zk", "-n", "default"], capture_output=True, text=True)
     if "zk" in zookeeper_installed.stdout:
         zookeeper_status = subprocess.run(["kubectl", "get", "pods", "-l", "app=zk", "-n", "default", "-o", "json"], capture_output=True, text=True)
         zookeeper_info = zookeeper_status.stdout
         return {"message": "Kafka & Zookeeper are already installed", "details": zookeeper_info}
-
-    # Check if Kafka is already installed
     kafka_installed = subprocess.run(["kubectl", "get", "statefulset", "kafka", "-n", "default"], capture_output=True, text=True)
     if "kafka" in kafka_installed.stdout:
         kafka_status = subprocess.run(["kubectl", "get", "pods", "-l", "app=kafka", "-n", "default", "-o", "json"], capture_output=True, text=True)
         kafka_info = kafka_status.stdout
         return {"message": "Kafka is already installed", "details": kafka_info}
 
-    # Install Zookeeper if not already installed
+
     zookeeper_yaml = """
 apiVersion: v1
 kind: Service
@@ -941,7 +438,6 @@ spec:
         logger.error(f"Error running kubectl apply for Zookeeper: {e.stderr}")
         raise HTTPException(status_code=500, detail=f"Failed to apply Zookeeper deployment: {e.stderr}")
 
-    # Install Kafka after Zookeeper is successfully deployed
     kafka_yaml = """
 apiVersion: v1
 kind: Service
@@ -1119,17 +615,16 @@ spec:
 
 
 
-# API to create Kafka topic
+
 @app.post('/create-kafka-topic/{cluster}')
 async def create_kafka_topic(cluster: str, request: KafkaTopicRequest):
     try:
         topic_name = request.topic_name
         consumer_group_name = request.consumer_group_name
-        
-        # Adjust the Zookeeper and Kafka settings as per your environment
+ 
         zookeeper_service = "zk-cs.default.svc.cluster.local:2181"
 
-        # Command to create Kafka topic using kubectl run
+
         create_topic_cmd = [
             "kubectl", "run", "-ti", "--image=gcr.io/google_containers/kubernetes-kafka:1.0-10.2.1",
             "createtopic", "--restart=Never", "--rm", "--",
@@ -1137,17 +632,15 @@ async def create_kafka_topic(cluster: str, request: KafkaTopicRequest):
             "--zookeeper", zookeeper_service, "--partitions", "1", "--replication-factor", "1"
         ]
 
-        # Execute the command using subprocess and capture the output
         result = subprocess.run(create_topic_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
 
-        # Check for errors in the command output
         if result.returncode != 0:
             logger.error(f"Failed to create Kafka topic: {result.stderr}")
             raise HTTPException(status_code=500, detail=f"Failed to create Kafka topic: {result.stderr}")
 
         logger.info(f"Created Kafka topic {topic_name}: {result.stdout}")
 
-        # Store the topic and consumer group in the database
+
         with get_db_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
@@ -1178,7 +671,6 @@ async def deploy_application(cluster: str, deployment_data: DeploymentData):
     kubeconfig_file = create_eks_kubeconfig(cluster_data['cluster_name'], cluster_data['region'], cluster_data['access_key'], cluster_data['secret_key'])
     os.environ["KUBECONFIG"] = kubeconfig_file
 
-    # Define service name based on deployment name
     service_name = f"{deployment_data.deployment_name}-service"
 
     deployment_yaml = f"""
@@ -1251,7 +743,6 @@ spec:
         result = subprocess.run(["kubectl", "apply", "-f", deployment_file], check=True, capture_output=True, text=True)
         logger.info(f"Kubectl apply output: {result.stdout}")
 
-        # Insert the deployment information into the database, including service_name
         cursor.execute(
             """
             INSERT INTO deployments (cluster_name, deployment_name, service_name)
@@ -1278,24 +769,20 @@ logger = logging.getLogger(__name__)
 
 
 
-
-
-
 @app.get('/kafka-topics')
 async def get_kafka_topics_consumer_groups():
     try:
-        # Connect to the database
+
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # Fetch all topics and their associated consumer groups
+
         topics = cursor.execute("SELECT topic_name, consumer_group_name FROM kafka_topics").fetchall()
         conn.close()
         
         if not topics:
             raise HTTPException(status_code=404, detail="No Kafka topics or consumer groups found")
-        
-        # Return the list of topics and consumer groups
+
         return [{"topic_name": row["topic_name"], "consumer_group_name": row["consumer_group_name"]} for row in topics]
     
     except Exception as e:
@@ -1326,7 +813,6 @@ async def install_keda(cluster: str):
     else:
         return {"error": "Failed to install KEDA", "details": result.stderr}
     
-import logging
 
 @app.get('/deployments/{cluster}')
 async def get_deployment_names(cluster: str):
@@ -1353,7 +839,6 @@ async def delete_deployment(cluster_name: str, deployment_name: str):
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    # Fetch cluster details from the database
     cluster_data = cursor.execute("SELECT * FROM clusters WHERE cluster_name = ?", (cluster_name,)).fetchone()
     if not cluster_data:
         raise HTTPException(status_code=404, detail="Cluster not found")
@@ -1364,7 +849,6 @@ async def delete_deployment(cluster_name: str, deployment_name: str):
 
     conn.close()
 
-    # Set up Kubernetes configuration
     try:
         kubeconfig_file = create_eks_kubeconfig(
             cluster_data['cluster_name'],
@@ -1384,13 +868,11 @@ async def delete_deployment(cluster_name: str, deployment_name: str):
     namespace = "default"
 
     try:
-        # Delete the deployment
+
         apps_v1.delete_namespaced_deployment(name=deployment_name, namespace=namespace)
 
-        # Delete the associated service
         v1.delete_namespaced_service(name=service_name[0], namespace=namespace)
 
-        # Delete the scaled object if it exists (assuming KEDA ScaledObject CRD)
         try:
             custom_objects_api.delete_namespaced_custom_object(
                 group="keda.sh",
@@ -1400,7 +882,6 @@ async def delete_deployment(cluster_name: str, deployment_name: str):
                 name=deployment_name
             )
         except client.exceptions.ApiException as e:
-            # Log but ignore if scaled object does not exist
             if e.status != 404:
                 raise e
 
@@ -1444,16 +925,13 @@ async def get_deployment_summary(cluster_name: str, deployment_name: str):
         apps_v1 = client.AppsV1Api()
         metrics_api = CustomObjectsApi()
 
-        # Fetch deployment details
         deployment_obj = apps_v1.read_namespaced_deployment(name=deployment_name, namespace="default")
 
-        # Fetch pod details related to the deployment
         pods = v1.list_namespaced_pod(namespace="default", label_selector=f"app={deployment_name}").items
         pod_status_list = []
         total_restarts = 0
         running_pods = 0
 
-        # Get metrics for pods
         metrics = metrics_api.list_namespaced_custom_object(
             group="metrics.k8s.io",
             version="v1beta1",
@@ -1461,7 +939,6 @@ async def get_deployment_summary(cluster_name: str, deployment_name: str):
             plural="pods"
         )
         
-        # Create a dictionary for quick lookup of pod metrics
         pod_metrics = {item['metadata']['name']: item['containers'][0]['usage'] for item in metrics['items']}
 
         for pod in pods:
@@ -1470,7 +947,6 @@ async def get_deployment_summary(cluster_name: str, deployment_name: str):
             if pod.status.phase == "Running":
                 running_pods += 1
 
-            # Fetch CPU and memory usage from metrics
             cpu_usage = pod_metrics.get(pod.metadata.name, {}).get('cpu', 'N/A')
             memory_usage = pod_metrics.get(pod.metadata.name, {}).get('memory', 'N/A')
 
@@ -1483,15 +959,13 @@ async def get_deployment_summary(cluster_name: str, deployment_name: str):
                 "memory_usage": memory_usage
             })
 
-        # Fetch service details using the service_name
         service = v1.read_namespaced_service(name=service_name, namespace="default")
 
-        # Get external IP from the LoadBalancer (if applicable)
         external_ip = None
         if service.status.load_balancer and service.status.load_balancer.ingress:
             external_ip = service.status.load_balancer.ingress[0].ip or service.status.load_balancer.ingress[0].hostname
 
-        # Prepare the summary response
+
         deployment_summary = {
             "deployment_name": deployment_obj.metadata.name,
             "replicas": deployment_obj.spec.replicas,
@@ -1518,7 +992,6 @@ async def send_kafka_messages(request: KafkaMessageRequest):
     message = request.message
     message_count = request.message_count
 
-    # Identify the Kafka pod
     try:
         pod_name_result = subprocess.run(
             ["kubectl", "get", "pods", "-n", "default", "-l", "app=kafka", "-o", "jsonpath={.items[0].metadata.name}"],
@@ -1529,18 +1002,16 @@ async def send_kafka_messages(request: KafkaMessageRequest):
         if not pod_name:
             raise HTTPException(status_code=500, detail="Kafka pod not found.")
 
-        print(f"Found Kafka pod: {pod_name}")  # Log pod name
+        print(f"Found Kafka pod: {pod_name}") 
 
-        # Create a script to send messages
         script = f"""
         for i in $(seq 1 {message_count}); do
           echo "{message} $i" | /opt/bitnami/kafka/bin/kafka-console-producer.sh --broker-list kafka.default.svc.cluster.local:9092 --topic {topic_name};
         done
         """
 
-        print(f"Running script: {script}")  # Log script details
+        print(f"Running script: {script}") 
 
-        # Exec into the pod and run the script
         exec_result = subprocess.run(
             ["kubectl", "exec", "-i", pod_name, "-n", "default", "--", "bash", "-c", script],
             capture_output=True, text=True
@@ -1552,13 +1023,12 @@ async def send_kafka_messages(request: KafkaMessageRequest):
         return {"message": f"Successfully sent {message_count} messages to topic {topic_name}"}
 
     except subprocess.CalledProcessError as e:
-        print(f"Error executing script: {e}")  # Log any subprocess errors
+        print(f"Error executing script: {e}")  
         raise HTTPException(status_code=500, detail=f"Failed to exec into Kafka pod: {str(e)}")
     except Exception as e:
-        print(f"Unhandled error: {str(e)}")  # Log any other unhandled errors
+        print(f"Unhandled error: {str(e)}") 
         raise HTTPException(status_code=500, detail=f"Unhandled error: {str(e)}")
 
-# Run the FastAPI application using uvicorn
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
