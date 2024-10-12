@@ -260,6 +260,7 @@
     let selectedCluster = null;
     let selectedDeploymentName = null;
     let deploymentReloadInterval;
+    const backendUrl = process.env.BACKEND_URL;
 
     // Register a new cluster by submitting the form
     document.getElementById('cluster-form').addEventListener('submit', async (e) => {
@@ -269,7 +270,7 @@
       const clusterName = document.getElementById('cluster-name').value;
       const region = document.getElementById('region').value;
 
-      const response = await fetch('http://localhost:8000/register-cluster', {
+      const response = await fetch(`${backendUrl}/register-cluster`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -292,7 +293,7 @@
 
     // Load all registered clusters
     async function loadClusters() {
-      const response = await fetch('http://localhost:8000/clusters');
+      const response = await fetch(`${backendUrl}/clusters`);
       const clusters = await response.json();
       const clusterList = document.getElementById('cluster-list');
       clusterList.innerHTML = '';
@@ -323,7 +324,7 @@
 
     // Load namespaces from the selected cluster
     async function loadNamespaces(clusterName) {
-      const response = await fetch(`http://localhost:8000/namespaces?cluster=${clusterName}`);
+      const response = await fetch(`${backendUrl}/namespaces?cluster=${clusterName}`);
       const data = await response.json();
       const namespaceSelect = document.getElementById('namespace-select');
       namespaceSelect.innerHTML = '';
@@ -353,7 +354,7 @@
 
     // Load pods based on the selected namespace and cluster
     async function loadPods(clusterName, namespace = 'all') {
-      const response = await fetch(`http://localhost:8000/pods?cluster=${clusterName}&namespace=${namespace}`);
+      const response = await fetch(`${backendUrl}/pods?cluster=${clusterName}&namespace=${namespace}`);
       const data = await response.json();
       const podList = document.getElementById('pod-list');
       podList.innerHTML = '';
@@ -380,7 +381,7 @@
     // Load deployments for the selected cluster
     async function loadDeployments(clusterName) {
       try {
-        const response = await fetch(`http://localhost:8000/deployments/${clusterName}`);
+        const response = await fetch(`${backendUrl}/deployments/${clusterName}`);
         if (!response.ok) {
           if (response.status === 404) {
             document.getElementById('deployments-list').innerHTML = '<li>No deployments found</li>';
@@ -423,7 +424,7 @@
 
     // Fetch deployment details and update the table
     async function fetchDeploymentDetails(clusterName, deploymentName) {
-      const response = await fetch(`http://localhost:8000/deployment-details/${clusterName}/${deploymentName}`);
+      const response = await fetch(`${backendUrl}/deployment-details/${clusterName}/${deploymentName}`);
       const details = await response.json();
 
       let externalIp = details.external_ip || 'Pending';
@@ -462,7 +463,7 @@
       }
 
       const clusterName = selectedCluster.textContent;
-      const response = await fetch(`http://localhost:8000/install-kafka/${clusterName}`, { method: 'POST' });
+      const response = await fetch(`${backendUrl}/install-kafka/${clusterName}`, { method: 'POST' });
 
       const result = await response.json();
       document.getElementById('kafka-status').textContent = result.message || result.error;
@@ -476,7 +477,7 @@
       }
 
       const clusterName = selectedCluster.textContent;
-      const response = await fetch(`http://localhost:8000/install-keda/${clusterName}`, { method: 'POST' });
+      const response = await fetch(`${backendUrl}/install-keda/${clusterName}`, { method: 'POST' });
 
       const result = await response.json();
       document.getElementById('keda-status').textContent = result.message || result.error;
@@ -495,7 +496,7 @@
       const topicName = document.getElementById('kafka-new-topic').value;
       const consumerGroupName = document.getElementById('kafka-new-consumer-group').value;
 
-      const response = await fetch(`http://localhost:8000/create-kafka-topic/${clusterName}`, {
+      const response = await fetch(`${backendUrl}/create-kafka-topic/${clusterName}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -514,7 +515,7 @@
 
     // Load topics and consumer groups into dropdowns
     async function loadTopicsAndConsumerGroups() {
-      const response = await fetch('http://localhost:8000/kafka-topics');
+      const response = await fetch(`${backendUrl}/kafka-topics`);
       const data = await response.json();
 
       const topicSelect = document.getElementById('kafka-topic-select');
@@ -557,7 +558,7 @@
       const kafkaTopic = document.getElementById('kafka-topic-select').value;
       const kafkaConsumerGroup = document.getElementById('kafka-consumer-group-select').value;
 
-      const response = await fetch(`http://localhost:8000/deploy/${clusterName}`, {
+      const response = await fetch(`${backendUrl}/deploy/${clusterName}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -590,7 +591,7 @@
     // Delete deployment
     async function deleteDeployment(clusterName, deploymentName) {
       if (confirm(`Are you sure you want to delete the deployment ${deploymentName}?`)) {
-        const response = await fetch(`http://localhost:8000/delete-deployment/${clusterName}/${deploymentName}`, { method: 'DELETE' });
+        const response = await fetch(`${backendUrl}/delete-deployment/${clusterName}/${deploymentName}`, { method: 'DELETE' });
         if (response.ok) {
           alert(`Deployment ${deploymentName} deleted successfully.`);
           loadDeployments(clusterName);
@@ -610,7 +611,7 @@
     const messageCount = document.getElementById('message-count').value;
 
     // Fetch request to send messages to Kafka
-    const response = await fetch('http://localhost:8000/send-kafka-messages', {
+    const response = await fetch(`${backendUrl}/send-kafka-messages`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -638,7 +639,7 @@
     const messageCount = document.getElementById('message-count').value;
 
     // Fetch request to send messages to Kafka
-    const response = await fetch('http://localhost:8000/send-kafka-messages', {
+    const response = await fetch(`${backendUrl}/send-kafka-messages`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -665,7 +666,7 @@
     const messageCount = document.getElementById('message-count').value;
 
     // Fetch request to send messages to Kafka
-    const response = await fetch('http://localhost:8000/send-kafka-messages', {
+    const response = await fetch(`${backendUrl}/send-kafka-messages`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
