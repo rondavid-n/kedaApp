@@ -1,73 +1,53 @@
 # kedaApp
 kedaApp
 
-Prerequisites
+#Prerequisites
 To work with this project, you'll need the following installed:
 
-Python 3.9+
+**Python 3.9+
 Docker
 Kubernetes (Minikube or any K8s cluster)
 Helm
 Jenkins
 Git
-Local Setup
+Local Setup**
+
 Clone the repository:
 
-bash
-Copy code
-git clone https://github.com/your-repo/myapp.git
-cd myapp
 Create a Python virtual environment and install dependencies:
 
-bash
-Copy code
+cd Backend
 python -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 Run the app locally:
 
-bash
-Copy code
 uvicorn app:app --reload
 The app will be available at http://127.0.0.1:8000.
 
-Building and Running with Docker
-Build the Docker image:
+cd frontend
+python3 -m http.server 8080  
 
-bash
-Copy code
-docker build -t myapp/image:latest .
-Run the Docker container:
-
-bash
-Copy code
-docker run -p 8000:8000 myapp/image:latest
-The app will be accessible at http://localhost:8000.
-
-Deploying to Kubernetes with Helm
-1. Build Docker Image
+**Deploying to Kubernetes with Helm**
+**1. Build Docker Image**
 Before deploying, make sure the Docker image is built and pushed to a container registry (Docker Hub, ECR, etc.).
 
-bash
-Copy code
-docker build -t myapp/image:latest .
-docker push myapp/image:latest
-2. Install Helm and Kubernetes Configuration
+docker build -t kedaapp/image:latest .
+docker push kedappapp/image:latest
+
+**2. Install Helm and Kubernetes Configuration**
 Ensure you have a working Kubernetes cluster and Helm installed. Then package and deploy the app using Helm.
 
-Package the Helm chart:
+**Package the Helm chart:**
+helm package kedaapp-helm
 
-bash
-Copy code
-helm package myapp-helm
-Install the chart on Kubernetes:
+**Install the chart on Kubernetes:**
 
-bash
-Copy code
-helm install myapp ./myapp-helm
+cd Backend/
+helm install kedaapp ./charts
 This will deploy the app to your Kubernetes cluster.
 
-CI/CD with Jenkins
+**CI/CD with Jenkins**
 Jenkins Pipeline Overview
 The Jenkinsfile automates the process of building, pushing the Docker image, and deploying the app to Kubernetes using Helm. It is designed to be modular, with various stages that handle:
 
@@ -86,7 +66,7 @@ Trigger the pipeline manually or set it up to run on Git pushes or pull requests
 The pipeline will deploy the app to the Kubernetes cluster automatically after each successful build.
 
 Helm Chart Details
-The myapp-helm directory contains a Helm chart for deploying the application to Kubernetes.
+The KedaApp-helm directory contains a Helm chart for deploying the application to Kubernetes.
 
 Key Files:
 deployment.yaml: Defines the Kubernetes deployment resource, which includes the number of replicas, the Docker image, and environment variables.
@@ -95,14 +75,11 @@ values.yaml: Contains default values, such as replica count, image tags, and res
 Helm Commands:
 Lint the chart:
 
-bash
-Copy code
-helm lint ./myapp-helm
+cd Backend/
+helm lint ./charts
 Install/Upgrade the app:
 
-bash
-Copy code
-helm upgrade --install myapp ./myapp-helm --set image.tag=latest
+helm upgrade --install KedaApp ./charts --set image.tag=latest
 Jenkins Pipeline Explanation
 The Jenkinsfile is designed for continuous integration and deployment (CI/CD) of the myapp project.
 
@@ -114,7 +91,7 @@ Helm Lint: Lints the Helm chart to ensure there are no issues.
 Deploy with Helm: Deploys or upgrades the application on the Kubernetes cluster using Helm.
 Post-Build Actions: Provides notifications or logs success/failure of the deployment.
 
-Overview of the Code
+**Overview of the Code**
 This project consists of two main components:
 
 Frontend (index.html): A user interface for managing AWS clusters, Kafka, KEDA deployments, and Kafka topics/consumer groups.
@@ -124,14 +101,14 @@ Additionally, the application leverages KEDA (Kubernetes Event-Driven Autoscalin
 index.html - Frontend
 The index.html file serves as the user interface for managing AWS clusters, Kafka, KEDA, and deploying applications. It includes various sections such as forms for registering clusters, buttons to install Kafka and KEDA, and forms for managing Kafka topics and consumer groups.
 
-Key Sections:
+**Key Sections:
 Cluster Registration: A form for registering AWS clusters with their credentials (AWS Access Key, Secret Key, Cluster Name, and Region).
 Connected Clusters: Displays a list of registered clusters. Users can select a cluster to view namespaces, pods, and deployments.
 Namespaces and Pods: Dropdowns and tables for selecting a namespace and viewing its pods, along with their status, CPU, and memory usage.
 Kafka & KEDA Installation: Buttons to install Kafka and KEDA into the selected cluster.
 Kafka Topic and Consumer Group Management: A form to create Kafka topics and consumer groups.
 Deployment Management: A form for deploying applications with custom Docker images, resource limits, and Kafka integration (topics and consumer groups).
-Kafka Message Producer: A section to produce messages to Kafka topics, where users can specify the number of messages and their content.
+Kafka Message Producer: A section to produce messages to Kafka topics, where users can specify the number of messages and their content.**
 
 
 app.py - Backend
@@ -200,7 +177,7 @@ GET /deployment-details/{cluster_name}/{deployment_name}: Retrieves detailed inf
 KEDA Autoscaling Based on Kafka Messages
 Once a deployment is made using the Kafka topic and consumer group specified in the deployment form, KEDA will monitor the Kafka topic. If the number of messages in the topic exceeds a certain threshold (e.g., 10 messages), KEDA will automatically scale the pods of the deployed application to handle the load.
 
-Scaling Trigger:
+**Scaling Trigger:**
 
 KEDA uses a Kafka trigger to monitor the Kafka topic's message count. If the number of messages in the topic exceeds the lagThreshold, KEDA triggers autoscaling.
 Autoscaling Behavior:
