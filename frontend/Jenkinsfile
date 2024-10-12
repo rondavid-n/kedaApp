@@ -1,0 +1,55 @@
+pipeline {
+    agent any
+
+    environment {
+        // Define environment variables for the pipeline
+        S3_BUCKET = 'your-s3-bucket-name'  // Change to your Bucket name
+        AWS_REGION = 'us-east-1'  
+        BACKEND_URL = 'https://api.yourdomain.com' // Provide your Backend URL
+        VENV_DIR = '.venv'  
+    }
+
+    stages {
+        stage('Install Dependencies') {
+            steps {
+                script {
+                   
+                    sh 'pip install virtualenv || true'  
+                    sh 'virtualenv ${VENV_DIR}' 
+                    sh '. ${VENV_DIR}/bin/activate' 
+                    sh 'pip install boto3'  
+                }
+            }
+        }
+
+        stage('Configure AWS Credentials and Deploy') {
+            steps {
+                withCredentials([[
+                    $class: 'AmazonWebServicesCredentialsBinding',
+                    credentialsId: 'aws-credentials' 
+                ]]) {
+                    script {
+                        // Inject environment variables and run the Python deploy script
+                        sh """
+                            . ${VENV_DIR}/bin/activate  // Activate virtual environment
+                            python deploy.py  // Run the Python deploy script
+                        """
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            // Clean up the workspace and remove virtual environment
+            deleteDir()
+        }
+        success {
+            echo 'Deployment successful!'
+        }
+        failure {
+            echo 'Deployment failed.'
+        }
+    }
+}

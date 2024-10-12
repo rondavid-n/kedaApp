@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AWS Cluster Manager with Kafka and KEDA</title>
+  <style>
+    body {
+      background-color: #1e1e1e;
+      color: #d4d4d4;
+      font-family: Arial, sans-serif;
+    }
+
+    h1, h2, h3, h4, h5 {
+      text-align: center;
+      color: #ffffff;
+    }
+
+    .container {
+      max-width: 800px;
+      margin: 20px auto;
+      padding: 20px;
+      background-color: #2c2c2c;
+      border-radius: 8px;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    }
+
+    form {
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+    }
+
+    label {
+      color: #a0a0a0;
+      font-size: 1rem;
+    }
+
+    input[type="text"], input[type="number"], select {
+      padding: 10px;
+      border: none;
+      border-radius: 4px;
+      background-color: #3a3a3a;
+      color: #ffffff;
+    }
+
+    button {
+      padding: 10px;
+      border: none;
+      border-radius: 4px;
+      background-color: #5c5c5c;
+      color: #ffffff;
+      font-size: 1rem;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background-color: #777777;
+    }
+
+    ul {
+      list-style-type: none;
+      padding: 0;
+    }
+
+    ul li {
+      padding: 10px;
+      margin: 5px 0;
+      background-color: #3a3a3a;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    ul li.selected {
+      background-color: #d1c663;
+      color: #000; 
+    }
+
+    ul li:hover {
+      background-color: #4a4a4a;
+    }
+
+    table {
+      width: 100%;
+      margin-top: 20px;
+      border-collapse: collapse;
+    }
+
+    table, th, td {
+      border: 1px solid #444444;
+    }
+
+    th, td {
+      padding: 10px;
+      text-align: left;
+    }
+
+    th {
+      background-color: #444444;
+    }
+
+    td {
+      background-color: #3a3a3a;
+    }
+
+    select {
+      background-color: #3a3a3a;
+      color: white;
+    }
+
+    @media (max-width: 600px) {
+      .container {
+        padding: 10px;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <h1>AWS Cluster Manager</h1>
+
+    <!-- Cluster Management -->
+    <form id="cluster-form">
+      <label for="access-key">AWS Access Key:</label>
+      <input type="text" id="access-key" name="access-key" required>
+
+      <label for="secret-key">AWS Secret Key:</label>
+      <input type="text" id="secret-key" name="secret-key" required>
+
+      <label for="cluster-name">Cluster Name:</label>
+      <input type="text" id="cluster-name" name="cluster-name" required>
+
+      <label for="region">AWS Region:</label>
+      <input type="text" id="region" name="region" required placeholder="e.g., us-east-1">
+
+      <button type="submit">Register Cluster</button>
+    </form>
+
+    <h2>Connected Clusters</h2>
+    <button id="reload-clusters-button">Reload Clusters</button>
+    <ul id="cluster-list"></ul>
+
+    <!-- Namespaces and Pods -->
+    <h3>Namespaces and Pods</h3>
+    <label for="namespace-select">Namespace:</label>
+    <select id="namespace-select"></select>
+    <table>
+      <thead>
+        <tr>
+          <th>Pod Name</th>
+          <th>Status</th>
+          <th>CPU</th>
+          <th>Memory</th>
+        </tr>
+      </thead>
+      <tbody id="pod-list"></tbody>
+    </table>
+
+    <!-- Install Kafka and KEDA -->
+    <h3>Install Kafka</h3>
+    <button id="install-kafka-button">Install Kafka</button>
+    <p id="kafka-status"></p>
+
+    <h3>Install KEDA</h3>
+    <button id="install-keda-button">Install KEDA</button>
+    <p id="keda-status"></p>
+
+    <!-- Kafka Topic and Consumer Group Management -->
+    <h4>Create Kafka Topic and Consumer Group</h4>
+    <form id="kafka-topic-form">
+      <label for="kafka-new-topic">Kafka Topic Name:</label>
+      <input type="text" id="kafka-new-topic" required placeholder="e.g., new-topic">
+
+      <label for="kafka-new-consumer-group">Kafka Consumer Group:</label>
+      <input type="text" id="kafka-new-consumer-group" required placeholder="e.g., new-consumer-group">
+
+      <button type="submit">Create Topic and Consumer Group</button>
+    </form>
+    <p id="kafka-create-status"></p>
+
+    <!-- Deployment Section -->
+    <h4>Deploy Applications with KEDA and Kafka</h4>
+    <form id="deployment-form">
+      <label for="deployment-name">Deployment Name:</label>
+      <input type="text" id="deployment-name" name="deployment-name" required>
+
+      <label for="docker-image">Docker Image:</label>
+      <input type="text" id="docker-image" name="docker-image" required placeholder="e.g., bitnami/kafka">
+
+      <label for="docker-tag">Docker Tag:</label>
+      <input type="text" id="docker-tag" name="docker-tag" required placeholder="e.g., latest">
+
+      <label for="cpu-requests">CPU Requests (m):</label>
+      <input type="text" id="cpu-requests" required>
+
+      <label for="cpu-limits">CPU Limits (m):</label>
+      <input type="text" id="cpu-limits" required>
+
+      <label for="memory-requests">Memory Requests (Mi):</label>
+      <input type="text" id="memory-requests" required>
+
+      <label for="memory-limits">Memory Limits (Mi):</label>
+      <input type="text" id="memory-limits" required>
+
+      <label for="ports">Ports (comma-separated):</label>
+      <input type="text" id="ports" required>
+
+      <label for="target-ports">Target Ports (comma-separated):</label>
+      <input type="text" id="target-ports" required>
+
+      <label for="kafka-topic-select">Kafka Topic:</label>
+      <select id="kafka-topic-select" required></select>
+
+      <label for="kafka-consumer-group-select">Kafka Consumer Group:</label>
+      <select id="kafka-consumer-group-select" required></select>
+
+      <button type="submit">Deploy</button>
+    </form>
+
+    <h4>Installed Deployments</h4>
+    <ul id="deployments-list"></ul>
+
+    <h5>Deployment Details</h5>
+    <table id="deployment-details-table">
+      <thead>
+        <tr>
+          <th>Deployment Name</th>
+          <th>Pods Running</th>
+          <th>Total Restarts</th>
+          <th>External IP</th>
+          <th>Service Name</th>
+          <th>CPU Usage</th>
+          <th>Memory Usage</th>
+          <th>Action</th> <!-- Delete button column -->
+        </tr>
+      </thead>
+      <tbody id="deployment-details"></tbody>
+    </table>
+
+    <h4>Produce Kafka Messages</h4>
+    <form id="produce-messages-form">
+      <label for="kafka-topic-input">Kafka Topic:</label>
+      <input type="text" id="kafka-topic-input" placeholder="Enter Kafka topic" required>
+    
+      <label for="kafka-message">Message:</label>
+      <textarea id="kafka-message" rows="4" required></textarea>
+    
+      <label for="message-count">Message Count:</label>
+      <input type="number" id="message-count" min="1" required value="1">
+    
+      <button type="submit">Send Messages</button>
+    </form>
+    
+    <p id="produce-status"></p>
+
+  </div>
+
+  <script>
+    let selectedCluster = null;
+    let selectedDeploymentName = null;
+    let deploymentReloadInterval;
+
+    // Register a new cluster by submitting the form
+    document.getElementById('cluster-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const accessKey = document.getElementById('access-key').value;
+      const secretKey = document.getElementById('secret-key').value;
+      const clusterName = document.getElementById('cluster-name').value;
+      const region = document.getElementById('region').value;
+
+      const response = await fetch('http://localhost:8000/register-cluster', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          access_key: accessKey,
+          secret_key: secretKey,
+          cluster_name: clusterName,
+          region: region,
+        }),
+      });
+
+      if (response.ok) {
+        alert('Cluster registered successfully!');
+        loadClusters();
+      } else {
+        alert('Failed to register cluster.');
+      }
+    });
+
+    // Load all registered clusters
+    async function loadClusters() {
+      const response = await fetch('http://localhost:8000/clusters');
+      const clusters = await response.json();
+      const clusterList = document.getElementById('cluster-list');
+      clusterList.innerHTML = '';
+      clusters.forEach(cluster => {
+        const li = document.createElement('li');
+        li.textContent = cluster;
+        li.addEventListener('click', () => onClusterClick(cluster, li));
+        clusterList.appendChild(li);
+      });
+    }
+
+    // Handle cluster click to load namespaces, pods, and deployments
+    async function onClusterClick(clusterName, liElement) {
+      if (selectedCluster) {
+        selectedCluster.classList.remove('selected');
+      }
+
+      liElement.classList.add('selected');
+      selectedCluster = liElement;
+
+      loadNamespaces(clusterName);
+      loadPods(clusterName, 'all');
+      loadDeployments(clusterName);
+
+      // Clear existing interval if any
+      clearInterval(deploymentReloadInterval);
+    }
+
+    // Load namespaces from the selected cluster
+    async function loadNamespaces(clusterName) {
+      const response = await fetch(`http://localhost:8000/namespaces?cluster=${clusterName}`);
+      const data = await response.json();
+      const namespaceSelect = document.getElementById('namespace-select');
+      namespaceSelect.innerHTML = '';
+
+      const allOption = document.createElement('option');
+      allOption.value = 'all';
+      allOption.textContent = 'All';
+      namespaceSelect.appendChild(allOption);
+
+      data.namespaces.forEach(namespace => {
+        const option = document.createElement('option');
+        option.value = namespace;
+        option.textContent = namespace;
+        namespaceSelect.appendChild(option);
+      });
+
+      // Set "All" as the default selected option
+      namespaceSelect.value = 'all';
+    }
+
+    // Add an event listener for namespace selection changes
+    document.getElementById('namespace-select').addEventListener('change', (e) => {
+      const selectedNamespace = e.target.value;
+      const clusterName = selectedCluster.textContent;
+      loadPods(clusterName, selectedNamespace);
+    });
+
+    // Load pods based on the selected namespace and cluster
+    async function loadPods(clusterName, namespace = 'all') {
+      const response = await fetch(`http://localhost:8000/pods?cluster=${clusterName}&namespace=${namespace}`);
+      const data = await response.json();
+      const podList = document.getElementById('pod-list');
+      podList.innerHTML = '';
+
+      if (data.pods.length === 0) {
+        const row = document.createElement('tr');
+        row.innerHTML = `<td colspan="4">No pods found</td>`;
+        podList.appendChild(row);
+        return;
+      }
+
+      data.pods.forEach(pod => {
+        const row = document.createElement('tr');
+        row.innerHTML = `
+          <td>${pod.name}</td>
+          <td>${pod.status}</td>
+          <td>${pod.cpu}</td>
+          <td>${pod.memory}</td>
+        `;
+        podList.appendChild(row);
+      });
+    }
+
+    // Load deployments for the selected cluster
+    async function loadDeployments(clusterName) {
+      try {
+        const response = await fetch(`http://localhost:8000/deployments/${clusterName}`);
+        if (!response.ok) {
+          if (response.status === 404) {
+            document.getElementById('deployments-list').innerHTML = '<li>No deployments found</li>';
+            return;
+          }
+          throw new Error('Failed to fetch deployments');
+        }
+
+        const deployments = await response.json();
+        const deploymentsList = document.getElementById('deployments-list');
+        deploymentsList.innerHTML = '';
+
+        deployments.deployments.forEach(deployment => {
+          const li = document.createElement('li');
+          li.textContent = `${deployment}`;
+          li.addEventListener('click', () => showDeploymentDetails(clusterName, deployment, li));
+          deploymentsList.appendChild(li);
+        });
+      } catch (error) {
+        console.error(error);
+        alert('An error occurred while loading deployments.');
+      }
+    }
+
+    // Show deployment details when a deployment is clicked
+    async function showDeploymentDetails(clusterName, deploymentName, liElement) {
+      if (selectedDeploymentName) {
+        selectedDeploymentName.classList.remove('selected');
+      }
+
+      liElement.classList.add('selected');
+      selectedDeploymentName = liElement;
+
+      fetchDeploymentDetails(clusterName, deploymentName);
+
+      // Set up auto-reload for deployment details every 5 seconds
+      clearInterval(deploymentReloadInterval); 
+      deploymentReloadInterval = setInterval(() => fetchDeploymentDetails(clusterName, deploymentName), 5000);
+    }
+
+    // Fetch deployment details and update the table
+    async function fetchDeploymentDetails(clusterName, deploymentName) {
+      const response = await fetch(`http://localhost:8000/deployment-details/${clusterName}/${deploymentName}`);
+      const details = await response.json();
+
+      let externalIp = details.external_ip || 'Pending';
+
+      const totalRestarts = details.pod_status_list.reduce((acc, pod) => acc + pod.restarts, 0);
+      const runningPods = details.pods_running;
+
+      const deploymentRow = `
+        <tr>
+          <td>${details.deployment_name}</td>
+          <td>${runningPods}</td>
+          <td>${totalRestarts}</td>
+          <td>${externalIp}</td>
+          <td>${details.service_name}</td>
+          <td>${details.pod_status_list.map(p => p.cpu_usage).join(", ")}</td>
+          <td>${details.pod_status_list.map(p => p.memory_usage).join(", ")}</td>
+          <td><button onclick="deleteDeployment('${clusterName}', '${deploymentName}')">Delete</button></td>
+        </tr>
+      `;
+
+      document.getElementById('deployment-details').innerHTML = deploymentRow;
+
+      // Check if any pods have problematic statuses and alert the user
+      details.pod_status_list.forEach(pod => {
+        if (pod.status !== 'Running') {
+          alert(`Warning: Pod ${pod.name} is in status ${pod.status}`);
+        }
+      });
+    }
+
+    // Install Kafka
+    document.getElementById('install-kafka-button').addEventListener('click', async () => {
+      if (!selectedCluster) {
+        alert('Please select a cluster first.');
+        return;
+      }
+
+      const clusterName = selectedCluster.textContent;
+      const response = await fetch(`http://localhost:8000/install-kafka/${clusterName}`, { method: 'POST' });
+
+      const result = await response.json();
+      document.getElementById('kafka-status').textContent = result.message || result.error;
+    });
+
+    // Install KEDA
+    document.getElementById('install-keda-button').addEventListener('click', async () => {
+      if (!selectedCluster) {
+        alert('Please select a cluster first.');
+        return;
+      }
+
+      const clusterName = selectedCluster.textContent;
+      const response = await fetch(`http://localhost:8000/install-keda/${clusterName}`, { method: 'POST' });
+
+      const result = await response.json();
+      document.getElementById('keda-status').textContent = result.message || result.error;
+    });
+
+    // Handle Kafka Topic and Consumer Group creation
+    document.getElementById('kafka-topic-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      if (!selectedCluster) {
+        alert('Please select a cluster first.');
+        return;
+      }
+
+      const clusterName = selectedCluster.textContent;
+      const topicName = document.getElementById('kafka-new-topic').value;
+      const consumerGroupName = document.getElementById('kafka-new-consumer-group').value;
+
+      const response = await fetch(`http://localhost:8000/create-kafka-topic/${clusterName}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          topic_name: topicName,
+          consumer_group_name: consumerGroupName,
+        }),
+      });
+
+      const result = await response.json();
+      document.getElementById('kafka-create-status').textContent = result.message;
+
+      loadTopicsAndConsumerGroups();
+    });
+
+    // Load topics and consumer groups into dropdowns
+    async function loadTopicsAndConsumerGroups() {
+      const response = await fetch('http://localhost:8000/kafka-topics');
+      const data = await response.json();
+
+      const topicSelect = document.getElementById('kafka-topic-select');
+      const consumerGroupSelect = document.getElementById('kafka-consumer-group-select');
+
+      topicSelect.innerHTML = '';
+      consumerGroupSelect.innerHTML = '';
+
+      data.forEach(item => {
+        const topicOption = document.createElement('option');
+        topicOption.value = item.topic_name;
+        topicOption.textContent = item.topic_name;
+        topicSelect.appendChild(topicOption);
+
+        const consumerGroupOption = document.createElement('option');
+        consumerGroupOption.value = item.consumer_group_name;
+        consumerGroupOption.textContent = item.consumer_group_name;
+        consumerGroupSelect.appendChild(consumerGroupOption);
+      });
+    }
+
+    // Handle deployment form submission
+    document.getElementById('deployment-form').addEventListener('submit', async (e) => {
+      e.preventDefault(); 
+      if (!selectedCluster) {
+        alert('Please select a cluster first.');
+        return;
+      }
+
+      const clusterName = selectedCluster.textContent;
+      const deploymentName = document.getElementById('deployment-name').value;
+      const dockerImage = document.getElementById('docker-image').value;
+      const dockerTag = document.getElementById('docker-tag').value;
+      const cpuRequests = document.getElementById('cpu-requests').value;
+      const cpuLimits = document.getElementById('cpu-limits').value;
+      const memoryRequests = document.getElementById('memory-requests').value;
+      const memoryLimits = document.getElementById('memory-limits').value;
+      const ports = document.getElementById('ports').value.split(',').map(port => port.trim());
+      const targetPorts = document.getElementById('target-ports').value.split(',').map(port => port.trim());
+      const kafkaTopic = document.getElementById('kafka-topic-select').value;
+      const kafkaConsumerGroup = document.getElementById('kafka-consumer-group-select').value;
+
+      const response = await fetch(`http://localhost:8000/deploy/${clusterName}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          deployment_name: deploymentName,
+          docker_image: dockerImage,
+          docker_tag: dockerTag,
+          cpu_requests: cpuRequests,
+          cpu_limits: cpuLimits,
+          memory_requests: memoryRequests,
+          memory_limits: memoryLimits,
+          ports: ports,
+          target_ports: targetPorts,
+          kafka_topic: kafkaTopic,
+          consumer_group_name: kafkaConsumerGroup,
+        }),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        alert(result.message || 'Deployment created successfully!');
+        loadDeployments(clusterName); // Reload deployments after submission
+      } else {
+        const errorResult = await response.json();
+        alert(`Failed to create deployment: ${errorResult.detail}`);
+      }
+    });
+
+    // Delete deployment
+    async function deleteDeployment(clusterName, deploymentName) {
+      if (confirm(`Are you sure you want to delete the deployment ${deploymentName}?`)) {
+        const response = await fetch(`http://localhost:8000/delete-deployment/${clusterName}/${deploymentName}`, { method: 'DELETE' });
+        if (response.ok) {
+          alert(`Deployment ${deploymentName} deleted successfully.`);
+          loadDeployments(clusterName);
+        } else {
+          alert('Failed to delete deployment.');
+        }
+      }
+    }
+
+    loadClusters();
+    loadTopicsAndConsumerGroups();
+
+    document.getElementById('produce-messages-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const topicName = document.getElementById('kafka-topic-select').value;
+    const message = document.getElementById('kafka-message').value;
+    const messageCount = document.getElementById('message-count').value;
+
+    // Fetch request to send messages to Kafka
+    const response = await fetch('http://localhost:8000/send-kafka-messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        topic_name: topicName,
+        message: message,
+        message_count: messageCount,
+      }),
+    });
+
+    const result = await response.json();
+    if (response.ok) {
+      document.getElementById('produce-status').textContent = `Messages sent successfully: ${result.message}`;
+    } else {
+      document.getElementById('produce-status').textContent = `Error: ${result.detail}`;
+    }
+  });
+
+  // Load topics for the dropdown (assuming the topics are loaded elsewhere in your app)
+  document.getElementById('produce-messages-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const topicName = document.getElementById('kafka-topic-select').value;
+    const message = document.getElementById('kafka-message').value;
+    const messageCount = document.getElementById('message-count').value;
+
+    // Fetch request to send messages to Kafka
+    const response = await fetch('http://localhost:8000/send-kafka-messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        topic_name: topicName,
+        message: message,
+        message_count: messageCount,
+      }),
+    });
+
+    const result = await response.json();
+    if (response.ok) {
+      document.getElementById('produce-status').textContent = `Messages sent successfully: ${result.message}`;
+    } else {
+      document.getElementById('produce-status').textContent = `Error: ${result.detail}`;
+    }
+  });
+
+  document.getElementById('produce-messages-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const topicName = document.getElementById('kafka-topic-input').value;
+    const message = document.getElementById('kafka-message').value;
+    const messageCount = document.getElementById('message-count').value;
+
+    // Fetch request to send messages to Kafka
+    const response = await fetch('http://localhost:8000/send-kafka-messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        topic_name: topicName,
+        message: message,
+        message_count: messageCount,
+      }),
+    });
+
+    const result = await response.json();
+    if (response.ok) {
+      document.getElementById('produce-status').textContent = `Messages sent successfully: ${result.message}`;
+    } else {
+      document.getElementById('produce-status').textContent = `Error: ${result.detail}`;
+    }
+  });
+</script>
+
+
+</script>
+
+
+
+</body>
+</html>

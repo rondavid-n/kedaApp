@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "KedaApp.fullname" . }}
+  labels:
+    app: {{ include "KedaApp.fullname" . }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ include "KedaApp.fullname" . }}
+  template:
+    metadata:
+      labels:
+        app: {{ include "KedaApp.fullname" . }}
+    spec:
+      containers:
+        - name: KedaApp
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          ports:
+            - containerPort: 8000
+          resources:
+            limits:
+              cpu: {{ .Values.resources.limits.cpu }}
+              memory: {{ .Values.resources.limits.memory }}
+            requests:
+              cpu: {{ .Values.resources.requests.cpu }}
+              memory: {{ .Values.resources.requests.memory }}
+      nodeSelector: {{ .Values.nodeSelector }}
+      tolerations: {{ toYaml .Values.tolerations | nindent 8 }}
+      affinity: {{ toYaml .Values.affinity | nindent 8 }}

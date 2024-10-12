@@ -1,0 +1,72 @@
+pipeline {
+    agent any
+
+    environment {
+        IMAGE_NAME = "KedaApp/image"
+        DOCKER_REGISTRY_CREDENTIALS = 'docker-hub-credentials'
+        KUBERNETES_CLUSTER_CREDENTIALS = 'k8s-cluster-credentials' 
+        CHART_PATH = './Backend/charts'
+        CHART_VERSION = '0.1.0'
+        KUBECONFIG = credentials('kubeconfig') 
+        HELM_RELEASE = 'KedaApp'
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                git branch: 'main', url: 'https://github.com/your-repo.git'
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    sh 'docker build -t $IMAGE_NAME:$BUILD_NUMBER .'
+                }
+            }
+        }
+
+        stage('Push Docker Image') {
+            steps {
+                script {
+                    docker.withRegistry('', DOCKER_REGISTRY_CREDENTIALS) {
+                        sh "docker push $IMAGE_NAME:$BUILD_NUMBER"
+                    }
+                }
+            }
+        }
+
+        stage('Helm Lint') {
+            steps {
+                script {
+                    sh "helm lint $CHART_PATH"
+                }
+            }
+        }
+
+        stage('Deploy with Helm') {
+            steps {
+                script {
+                    withCredentials([kubeconfigFile(credentialsId: KUBERNETES_CLUSTER_CREDENTIALS, variable: 'KUBECONFIG')]) {
+                        sh """
+                        helm upgrade --install $HELM_RELEASE $CHART_PATH \
+                        --set image.repository=$IMAGE_NAME \
+                        --set image.tag=$BUILD_NUMBER \
+                        --set appVersion=$BUILD_NUMBER \
+                        --set replicaCount=2
+                        """
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo 'Deployment succeeded!'
+        }
+        failure {
+            echo 'Deployment failed!'
+        }
+    }
+}
